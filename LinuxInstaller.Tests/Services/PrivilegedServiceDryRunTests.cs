@@ -1,38 +1,37 @@
+using LinuxInstaller.Models;
 using LinuxInstaller.Services;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LinuxInstaller.Tests.Services;
 
-public class PrivilegedServiceDryRunTests
+public class PrivilegedServiceConfigurationTests
 {
     [Fact]
-    public async Task BootManager_DoesNotExposeWritableEspPathInDryRun()
+    public void BootManager_IsConfiguredForRealExecution()
     {
-        var service = new BootManagerService();
+        var service = new BootManagerService(new ProcessRunnerService());
 
-        var espPath = await service.MountEspAsync();
-        await service.CreateBcdEntryAsync("S:", "EFI\\Installer\\shimx64.efi");
-        await service.UnmountEspAsync();
-
-        Assert.True(service.IsDryRun);
-        Assert.Null(espPath);
+        Assert.False(service.IsDryRun);
     }
 
     [Fact]
-    public async Task Diskpart_DryRunCannotReportShrinkSuccessOrFakeTopology()
+    public void Diskpart_IsConfiguredForRealExecution()
     {
-        var service = new DiskpartService();
+        var service = new DiskpartService(
+            new ProcessRunnerService(),
+            new EmptyStorageManager());
 
-        var shrinkSucceeded = await service.ShrinkPartitionAsync("C:", 1024);
-        var disks = await service.ListDisksAsync();
-        var volumes = await service.ListVolumesAsync();
-        var execution = await service.ExecuteScriptAsync("list disk");
+        Assert.False(service.IsDryRun);
+    }
 
-        Assert.True(service.IsDryRun);
-        Assert.False(shrinkSucceeded);
-        Assert.Empty(disks);
-        Assert.Empty(volumes);
-        Assert.Equal(50, execution.ExitCode);
-        Assert.Empty(execution.StandardOutput);
-        Assert.Contains("disabled", execution.StandardError);
+    private sealed class EmptyStorageManager : IStorageManager
+    {
+        public Task<IReadOnlyList<Disk>> GetDisksAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Disk>>([]);
+        }
     }
 }

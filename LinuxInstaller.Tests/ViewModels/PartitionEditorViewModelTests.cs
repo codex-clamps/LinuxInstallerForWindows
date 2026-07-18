@@ -56,7 +56,7 @@ public class PartitionEditorViewModelTests
             Name = "Linux root",
             Size = 16UL * 1024 * 1024 * 1024,
             StartOffset = AutomaticPartitionPlanner.PartitionAlignmentBytes,
-            FileSystem = FileSystem.LINUX,
+            FileSystem = FileSystem.EXT4,
             IsSystem = false,
             MountPoint = "/"
         };
@@ -209,7 +209,7 @@ public class PartitionEditorViewModelTests
             Name = "Linux root",
             Size = 16UL * 1024 * 1024 * 1024,
             StartOffset = AutomaticPartitionPlanner.PartitionAlignmentBytes,
-            FileSystem = FileSystem.LINUX,
+            FileSystem = FileSystem.EXT4,
             IsSystem = false,
             MountPoint = "/"
         };

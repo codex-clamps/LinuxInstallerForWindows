@@ -76,7 +76,7 @@ public class DistroPickerViewModelTests
             Name = "Linux root",
             Size = AutomaticPartitionPlanner.MinimumPartitionSizeBytes,
             StartOffset = AutomaticPartitionPlanner.PartitionAlignmentBytes,
-            FileSystem = FileSystem.LINUX,
+            FileSystem = FileSystem.EXT4,
             MountPoint = "/",
             IsSystem = false,
             IsExisting = false

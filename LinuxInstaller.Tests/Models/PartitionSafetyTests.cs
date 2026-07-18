@@ -22,7 +22,7 @@ public class PartitionSafetyTests
             Name = "Linux root",
             Size = 32UL * 1024 * 1024 * 1024,
             StartOffset = 1024 * 1024,
-            FileSystem = FileSystem.LINUX,
+            FileSystem = FileSystem.EXT4,
             IsSystem = false,
             MountPoint = "/"
         };

@@ -275,7 +275,7 @@ public class PartitionPlanTests
             Name = id,
             StartOffset = startOffset,
             Size = size,
-            FileSystem = FileSystem.LINUX,
+            FileSystem = FileSystem.EXT4,
             IsSystem = false,
             MountPoint = mountPoint
         };

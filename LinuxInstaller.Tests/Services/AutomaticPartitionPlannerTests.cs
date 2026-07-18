@@ -107,7 +107,7 @@ public class AutomaticPartitionPlannerTests
                 partition.Id,
                 result.RootPartition.Id,
                 StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(FileSystem.LINUX, result.RootPartition.FileSystem);
+        Assert.Equal(FileSystem.EXT4, result.RootPartition.FileSystem);
         Assert.Equal("/", result.RootPartition.MountPoint);
     }
 
