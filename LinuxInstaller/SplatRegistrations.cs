@@ -21,8 +21,9 @@ namespace LinuxInstaller
             services.AddSingleton<ConfigGeneratorService>();
             services.AddSingleton<DiskpartService>();
             services.AddSingleton<DistroService>();
+            services.AddSingleton<IStorageManager, WindowsStorageManager>();
             services.AddSingleton<PartitionService>();
-            services.AddSingleton<SystemAnalysisService>();
+            services.AddSingleton<ISystemAnalysisService, SystemAnalysisService>();
             services.AddSingleton<InstallationConfigService>(); // Register the new service
             services.AddSingleton<NavigationService>();
 

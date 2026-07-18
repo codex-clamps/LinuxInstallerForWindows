@@ -33,21 +33,25 @@ public partial class InstallationSummaryViewModel : NavigatableViewModelBase
     public bool IsDistroSelected => SelectedDistro != null;
     public bool IsWorkflowSelected => SelectedWorkflow != default;
     public bool IsUserInfoAvailable => UserInfo != null;
-    public bool IsPartitionPlanAvailable => PartitionPlan != null;
+    public bool IsPartitionPlanAvailable => PartitionPlan.IsValid;
 
     public List<KeyValuePair<string, string>> PartitionSummaryContent
     {
         get
         {
             var content = new List<KeyValuePair<string, string>>();
-            if (PartitionPlan != null)
+            if (PartitionPlan.TargetDisk is not { } targetDisk ||
+                PartitionPlan.PartitionHistory.Count == 0)
             {
-                content.Add(new("Target Disk", PartitionPlan.TargetDisk!.Name));
-                foreach (var part in PartitionPlan.PartitionHistory.Last().Where(p => !string.IsNullOrWhiteSpace(p.MountPoint)))
-                {
-                    content.Add(new($"Mountpoint {part.MountPoint}", $"{part.Name} - {FS.ToString(part.FileSystem)} - {FileSizeConverter.ToUnit(part.Size)}"));
-                }
+                return content;
             }
+
+            content.Add(new("Target Disk", targetDisk.Name));
+            foreach (var part in PartitionPlan.PartitionHistory.Last().Where(p => !string.IsNullOrWhiteSpace(p.MountPoint)))
+            {
+                content.Add(new($"Mountpoint {part.MountPoint}", $"{part.Name} - {FS.ToString(part.FileSystem)} - {FileSizeConverter.ToUnit(part.Size)}"));
+            }
+
             return content;
         }
     }
@@ -64,7 +68,9 @@ public partial class InstallationSummaryViewModel : NavigatableViewModelBase
                         Title = "Selected ISO Image",
                         Icon = "\uE019",
                         Content = [
-                            new KeyValuePair<string, string>("Path", _installationConfigService.SelectedIsoPath!)
+                            new KeyValuePair<string, string>(
+                                "Path",
+                                _installationConfigService.SelectedIsoPath ?? "No ISO image selected")
                         ],
                         Action = new() {
                             Label = "Edit",
@@ -74,16 +80,25 @@ public partial class InstallationSummaryViewModel : NavigatableViewModelBase
                     }
                 ];
             }
+
+            var distroContent = SelectedDistro is { } distro
+                ? new List<KeyValuePair<string, string>>
+                {
+                    new("Name", distro.DistroName),
+                    new("Description", distro.Description),
+                    new("Size", FileSizeConverter.ToUnit(distro.Size))
+                }
+                :
+                [
+                    new("Status", "No distribution selected")
+                ];
+
             return [
                 new SummaryItem
                 {
                     Title = "Distro",
                     Icon = "\uE019",
-                    Content = [
-                        new KeyValuePair<string, string>("Name", SelectedDistro!.DistroName),
-                        new KeyValuePair<string, string>("Description", SelectedDistro!.Description),
-                        new KeyValuePair<string, string>("Size", $"{FileSizeConverter.ToUnit(SelectedDistro!.Size)}")
-                    ],
+                    Content = distroContent,
                     Action = new() {
                         Label = "Edit",
                         Icon = "\uE3C9",
@@ -113,7 +128,7 @@ public partial class InstallationSummaryViewModel : NavigatableViewModelBase
                     Action = new() {
                         Label = "Edit",
                         Icon = "\uE3C9",
-                        Callback = GoToDistroPickerCommand,
+                        Callback = GoToPartitionEditorCommand,
                     }
                 }
             ];
@@ -140,14 +155,26 @@ public partial class InstallationSummaryViewModel : NavigatableViewModelBase
     }
 
     [RelayCommand]
+    private void GoToPartitionEditor()
+    {
+        Navigation.Goto("partitionEditor");
+    }
+
+    [RelayCommand]
     private async Task Install()
     {
+        if (!CanProceed)
+        {
+            return;
+        }
+
         var dialog = new ConfirmationDialogView();
         dialog.DataContext = new ConfirmationDialogViewModel("This will start the installation process.\nAre you sure you want to continue?", dialog);
 
-        if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop &&
+            desktop.MainWindow is { } mainWindow)
         {
-            bool result = await dialog.ShowDialog<bool>(owner: desktop.MainWindow!);
+            bool result = await dialog.ShowDialog<bool>(owner: mainWindow);
             if (result)
             {
                 Navigation.Next();
@@ -162,6 +189,17 @@ public partial class InstallationSummaryViewModel : NavigatableViewModelBase
     }
 
     // INavigatableViewModel Implementation
-    public override bool CanProceed => true; // Assume always can proceed to start installation
+    public override bool CanProceed => _installationConfigService.SelectedInstallWorkflow switch
+    {
+        InstallWorkflowType.Iso =>
+            !string.IsNullOrWhiteSpace(_installationConfigService.SelectedIsoPath),
+        InstallWorkflowType.Distro =>
+            SelectedDistro != null &&
+            PartitionPlan.IsValid &&
+            !string.IsNullOrWhiteSpace(UserInfo.Username) &&
+            !string.IsNullOrWhiteSpace(UserInfo.Password) &&
+            UserInfo.Password == UserInfo.ConfirmPassword,
+        _ => false
+    };
     public override bool CanGoBack => true; // Assume always can go back to review/edit
 }

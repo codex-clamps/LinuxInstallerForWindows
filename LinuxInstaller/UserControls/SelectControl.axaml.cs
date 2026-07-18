@@ -19,7 +19,7 @@ public partial class SelectControl : UserControl, INotifyPropertyChanged
         InitializeComponent();
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public new event PropertyChangedEventHandler? PropertyChanged;
 
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {

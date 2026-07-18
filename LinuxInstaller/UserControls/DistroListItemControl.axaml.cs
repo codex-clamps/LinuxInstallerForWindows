@@ -22,7 +22,7 @@ public partial class DistroListItemControl : UserControl, INotifyPropertyChanged
         InitializeComponent();
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public new event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {

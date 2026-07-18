@@ -15,7 +15,7 @@ public partial class TextFieldControl : UserControl, INotifyPropertyChanged
         IsPassword = false;
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public new event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
@@ -48,7 +48,7 @@ public partial class TextFieldControl : UserControl, INotifyPropertyChanged
         AvaloniaProperty.Register<TextFieldControl, string>(nameof(Variant), defaultValue: "Default");
     public static readonly StyledProperty<CornerRadius> BorderRadiusProperty =
         AvaloniaProperty.Register<TextFieldControl, CornerRadius>(nameof(BorderRadius), defaultValue: new(4));
-    public static readonly StyledProperty<bool> IsEnabledProperty =
+    public new static readonly StyledProperty<bool> IsEnabledProperty =
         AvaloniaProperty.Register<TextFieldControl, bool>(nameof(IsEnabled), defaultValue: true);
     // Numeric properties
     public static readonly StyledProperty<bool> IsNumericProperty =
@@ -126,7 +126,7 @@ public partial class TextFieldControl : UserControl, INotifyPropertyChanged
         }
     }
     public CornerRadius ICornerRadius => Variant.Equals("Outlined") ? BorderRadius : new(4, 4, 0, 0);
-    public bool IsEnabled
+    public new bool IsEnabled
     {
         get => GetValue(IsEnabledProperty);
         set => SetValue(IsEnabledProperty, value);

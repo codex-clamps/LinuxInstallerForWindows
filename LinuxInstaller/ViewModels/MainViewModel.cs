@@ -64,10 +64,15 @@ public partial class MainViewModel : ObservableObject
         _currentContent = _navigationService.CurrentPage;
 
         _navigationService.CurrentPageIndexObservable
-            .Subscribe(viewModel =>
+            .Subscribe(async _ =>
             {
                 CurrentContent = _navigationService.CurrentPage;
-                if (CurrentContent is InstallationProgressViewModel progressViewModel)
+
+                if (CurrentContent is PartitionEditorViewModel partitionEditorViewModel)
+                {
+                    await partitionEditorViewModel.ActivateAsync();
+                }
+                else if (CurrentContent is InstallationProgressViewModel progressViewModel)
                 {
                     progressViewModel.StartInstallationSimulation();
                 }
@@ -96,15 +101,22 @@ public partial class MainViewModel : ObservableObject
         }
 
         // 2. Place bootloaders (shim, grub) and configs on the appropriate partitions (ESP and staging area) using AssetManager and BootManagerService.
-        var espPath = await _bootManagerService.MountEsp();
+        var espPath = await _bootManagerService.MountEspAsync();
         if (!string.IsNullOrEmpty(espPath))
         {
-            _assetManagerService.CopyBundledBootloader(espPath);
+            try
+            {
+                _assetManagerService.CopyBundledBootloader(espPath);
 
-            // 3. Create the BCD entry using BootManagerService.
-            _bootManagerService.CreateBcdEntry(espPath, "EFI\\MyCustomInstaller\\shimx64.efi");
-
-            _bootManagerService.UnmountEsp();
+                // 3. Create the BCD entry using BootManagerService.
+                await _bootManagerService.CreateBcdEntryAsync(
+                    espPath,
+                    "EFI\\MyCustomInstaller\\shimx64.efi");
+            }
+            finally
+            {
+                await _bootManagerService.UnmountEspAsync();
+            }
         }
 
         // 4. Prompt the user to reboot. (This would involve UI interaction, not directly here)

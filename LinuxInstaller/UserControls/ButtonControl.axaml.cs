@@ -14,7 +14,7 @@ public partial class ButtonControl : UserControl, INotifyPropertyChanged
         InitializeComponent();
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public new event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
@@ -22,7 +22,7 @@ public partial class ButtonControl : UserControl, INotifyPropertyChanged
     }
 
     // Content, Command, and CommandParameter properties
-    public static readonly StyledProperty<object?> ContentProperty =
+    public new static readonly StyledProperty<object?> ContentProperty =
         AvaloniaProperty.Register<ButtonControl, object?>(nameof(Content));
     public static readonly StyledProperty<ICommand?> CommandProperty =
         AvaloniaProperty.Register<ButtonControl, ICommand?>(nameof(Command));
@@ -41,7 +41,7 @@ public partial class ButtonControl : UserControl, INotifyPropertyChanged
     public static readonly StyledProperty<ButtonStyles> ButtonStylesProperty =
         AvaloniaProperty.Register<ButtonControl, ButtonStyles>(nameof(ButtonStyles), new ButtonStyles());
 
-    public object? Content
+    public new object? Content
     {
         get => GetValue(ContentProperty);
         set => SetValue(ContentProperty, value);

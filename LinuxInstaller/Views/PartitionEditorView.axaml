@@ -169,5 +169,39 @@
 		<StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
 			<Button Content="Next" Classes="Filled" Command="{Binding NextCommand}" IsEnabled="{Binding CanProceed}"/>
 		</StackPanel>
+
+        <Border Grid.RowSpan="3"
+                IsVisible="{Binding IsLoading}"
+                Background="{StaticResource SurfaceBrush}"
+                Opacity="0.96">
+            <StackPanel Spacing="12"
+                        Width="320"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Height="4"/>
+                <TextBlock Text="Reading Windows storage topology..."
+                           HorizontalAlignment="Center"
+                           Foreground="{StaticResource OnSurfaceVariantBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.RowSpan="3"
+                IsVisible="{Binding HasError}"
+                Background="{StaticResource ErrorContainerBrush}"
+                CornerRadius="12"
+                Padding="20"
+                MaxWidth="520"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding ErrorMessage}"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource OnErrorContainerBrush}"/>
+                <Button Content="Retry"
+                        Classes="Filled"
+                        HorizontalAlignment="Center"
+                        Command="{Binding RefreshDisksCommand}"/>
+            </StackPanel>
+        </Border>
 	</Grid>
 </UserControl>

@@ -48,7 +48,11 @@
 		</Border>
 
 		<StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="16">
-			<Button Content="Install" Classes="Filled Large" Margin="8,0,0,0" Command="{Binding InstallCommand}"/>
+			<Button Content="Install"
+					Classes="Filled Large"
+					Margin="8,0,0,0"
+					IsEnabled="{Binding CanProceed}"
+					Command="{Binding InstallCommand}"/>
 		</StackPanel>
 	</Grid>
 </UserControl>

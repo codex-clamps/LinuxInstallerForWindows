@@ -1,1 +1,10 @@
-.vs
+.vs/
+**/bin/
+**/obj/
+TestResults/
+artifacts/
+*.user
+*.suo
+**/cache/
+**/credentials/
+credentials

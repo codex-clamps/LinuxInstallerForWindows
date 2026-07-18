@@ -6,26 +6,176 @@
              xmlns:uc="using:LinuxInstaller.UserControls"
              mc:Ignorable="d"
              x:Class="LinuxInstaller.Views.LoadingView"
-			 x:DataType="vm:LoadingViewModel"
-             d:DesignWidth="400" d:DesignHeight="300">
+             x:DataType="vm:LoadingViewModel"
+             d:DesignWidth="800"
+             d:DesignHeight="520">
     <Design.DataContext>
         <vm:LoadingViewModel/>
     </Design.DataContext>
-    <Grid Classes="Card" HorizontalAlignment="Center" VerticalAlignment="Center">
-        <StackPanel Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="32">
-            <Border CornerRadius="100" Background="{StaticResource PrimaryContainerBrush}" Padding="16" Width="80" Height="80">
-                <Image Source="avares://LinuxInstaller/Assets/Icons/Logo.png" Width="48" Height="48"/>
+
+    <Grid RowDefinitions="Auto,*,Auto" Classes="Card">
+        <uc:PageHeaderControl Grid.Row="0"
+                              Title="System analysis"
+                              Subtitle="Review the read-only compatibility checks before continuing."
+                              Margin="16"/>
+
+        <Grid Grid.Row="1" Margin="16,0">
+            <StackPanel IsVisible="{Binding IsChecking}"
+                        Spacing="16"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Width="360">
+                <Border CornerRadius="100"
+                        Background="{StaticResource PrimaryContainerBrush}"
+                        Padding="16"
+                        Width="80"
+                        Height="80">
+                    <Image Source="avares://LinuxInstaller/Assets/Icons/Logo.png"
+                           Width="48"
+                           Height="48"/>
+                </Border>
+                <ProgressBar Height="4"
+                             CornerRadius="2"
+                             IsIndeterminate="True"
+                             HorizontalAlignment="Stretch"
+                             Foreground="{StaticResource PrimaryBrush}"/>
+                <TextBlock Text="{Binding StatusText}"
+                           HorizontalAlignment="Center"
+                           Foreground="{StaticResource OnSurfaceVariantBrush}"/>
+            </StackPanel>
+
+            <ScrollViewer IsVisible="{Binding HasAnalysis}">
+                <StackPanel Spacing="12" MaxWidth="640">
+                    <Border Background="{StaticResource SurfaceVariantBrush}"
+                            CornerRadius="12"
+                            Padding="16">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Administrator privileges"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource OnSurfaceBrush}"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding AdministratorStatus}"
+                                       Foreground="{StaticResource OnSurfaceVariantBrush}"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Background="{StaticResource SurfaceVariantBrush}"
+                            CornerRadius="12"
+                            Padding="16">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Firmware mode"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource OnSurfaceBrush}"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding BootModeStatus}"
+                                       Foreground="{StaticResource OnSurfaceVariantBrush}"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Background="{StaticResource SurfaceVariantBrush}"
+                            CornerRadius="12"
+                            Padding="16">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Secure Boot"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource OnSurfaceBrush}"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding SecureBootStatus}"
+                                       Foreground="{StaticResource OnSurfaceVariantBrush}"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Background="{StaticResource SurfaceVariantBrush}"
+                            CornerRadius="12"
+                            Padding="16">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="System volume encryption"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource OnSurfaceBrush}"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding BitLockerStatus}"
+                                       Foreground="{StaticResource OnSurfaceVariantBrush}"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Background="{StaticResource SurfaceVariantBrush}"
+                            CornerRadius="12"
+                            Padding="16">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                            <TextBlock Text="Storage topology"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource OnSurfaceBrush}"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding StorageStatus}"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Right"
+                                       Foreground="{StaticResource OnSurfaceVariantBrush}"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Background="{StaticResource PrimaryContainerBrush}"
+                            CornerRadius="12"
+                            Padding="16">
+                        <TextBlock Text="{Binding CompatibilityStatus}"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource OnPrimaryContainerBrush}"/>
+                    </Border>
+
+                    <Border IsVisible="{Binding NeedsElevation}"
+                            Background="{StaticResource SecondaryContainerBrush}"
+                            CornerRadius="12"
+                            Padding="16">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Administrator access will be required"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource OnSecondaryContainerBrush}"/>
+                                    <TextBlock Text="Elevation is required before any installation changes can be prepared."
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource OnSecondaryContainerBrush}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        Content="Relaunch as administrator"
+                                        Classes="Tonal"
+                                        Command="{Binding RelaunchAsAdminCommand}"/>
+                            </Grid>
+                            <TextBlock IsVisible="{Binding HasElevationMessage}"
+                                       Text="{Binding ElevationMessage}"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource OnSecondaryContainerBrush}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border IsVisible="{Binding HasError}"
+                    Background="{StaticResource ErrorContainerBrush}"
+                    CornerRadius="12"
+                    Padding="16"
+                    MaxWidth="640"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="{Binding ErrorMessage}"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource OnErrorContainerBrush}"/>
+                    <Button Content="Retry"
+                            Classes="Filled"
+                            HorizontalAlignment="Center"
+                            Command="{Binding RetryCommand}"/>
+                </StackPanel>
             </Border>
-            <TextBlock Text="Linux Installer" Classes="HeadlineLarge" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource OnSurfaceBrush}" />
-			<ProgressBar
-				Height="4"
-				CornerRadius="2"
-				IsIndeterminate="True"
-				HorizontalAlignment="Stretch"
-				VerticalAlignment="Center"
-				IsVisible="True"
-				Foreground="{StaticResource PrimaryBrush}"/>
-            <TextBlock Text="{Binding StatusText}" Classes="HeadlineMedium" HorizontalAlignment="Center" Foreground="{StaticResource OnSurfaceVariantBrush}" />
-        </StackPanel> 
+        </Grid>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Margin="16">
+            <Button Content="Continue"
+                    Classes="Filled Large"
+                    IsEnabled="{Binding CanProceed}"
+                    Command="{Binding ContinueCommand}"/>
+        </StackPanel>
     </Grid>
 </UserControl>

@@ -10,7 +10,11 @@ namespace LinuxInstaller.ViewModels;
 
 public partial class PartitionDialogViewModel : ObservableObject
 {
+    private const ulong PartitionAlignmentBytes = 1024UL * 1024UL;
     private readonly Window _dialogWindow;
+    private readonly ulong _spaceStart;
+    private readonly ulong _spaceSize;
+    private bool _isUpdatingGeometry;
 
     [ObservableProperty]
     private PlannedPartition _targetPartition;
@@ -42,7 +46,9 @@ public partial class PartitionDialogViewModel : ObservableObject
     public PartitionDialogViewModel(Window dialogWindow, ChartSpace space, int index = 0, bool hasRoot = false)
     {
         _dialogWindow = dialogWindow;
-        SelectedSizeUnit = "MB"; // Default unit for all size-related fields
+        _spaceStart = space.Start;
+        _spaceSize = space.Size;
+        SelectedSizeUnit = "MB";
 
         if (space is ChartPartition ps)
         {
@@ -54,66 +60,76 @@ public partial class PartitionDialogViewModel : ObservableObject
             IsNew = true;
             TargetPartition = new PlannedPartition()
             {
-                Id = index == 0 ? $"part{(new Random()).Next(99999, 10000000)}" : $"part{index}",
+                Id = PlannedPartition.CreateId(),
                 Name = "New Partition " + (index == 0 ? "" : $"{index}"),
                 StartOffset = space.Start,
-                Size = space.Size, // Initial size is the whole free space
-                FileSystem = FileSystem.LINUX, // Default to ext4
+                Size = space.Size,
+                FileSystem = FileSystem.LINUX,
                 IsSystem = false,
-                MountPoint = hasRoot ? "" : "/" // Default mount point
+                MountPoint = hasRoot ? "" : "/"
             };
             Title = "Add New Partition";
         }
 
-        // Initialize display values based on TargetPartition and initial space
         var max = BytesToUnit(TargetPartition.Size, SelectedSizeUnit);
-        _fsaLock = true;
         _size = max;
-        MaxSize = max;
+        _maxSize = max;
     }
-
-    private bool _sizeLock = false;
-    private bool _fsaLock = false;
 
     partial void OnSelectedSizeUnitChanged(string? oldValue, string newValue)
     {
-        if (oldValue == null) oldValue = AvailableSizeUnits[0];
-        MaxSize = BytesToUnit(UnitToBytes(MaxSize, oldValue), newValue);
-        // Update Size, FreeSpaceBefore, and FreeSpaceAfter to new unit
-        _sizeLock = true;
-        FreeSpaceBefore = BytesToUnit(UnitToBytes(FreeSpaceBefore, oldValue), newValue);
-        Size = BytesToUnit(UnitToBytes(Size, oldValue), newValue);
-        FreeSpaceAfter = BytesToUnit(UnitToBytes(FreeSpaceAfter, oldValue), newValue);
+        if (oldValue == null || _isUpdatingGeometry)
+        {
+            return;
+        }
+
+        _isUpdatingGeometry = true;
+        MaxSize = ConvertUnits(MaxSize, oldValue, newValue);
+        FreeSpaceBefore = ConvertUnits(FreeSpaceBefore, oldValue, newValue);
+        Size = ConvertUnits(Size, oldValue, newValue);
+        FreeSpaceAfter = ConvertUnits(FreeSpaceAfter, oldValue, newValue);
+        _isUpdatingGeometry = false;
+        NotifyGeometryChanged();
     }
 
     partial void OnFreeSpaceBeforeChanged(decimal oldValue, decimal newValue)
     {
-        _fsaLock = true;
-        Size -= (newValue - oldValue);
+        if (_isUpdatingGeometry)
+        {
+            return;
+        }
+
+        _isUpdatingGeometry = true;
+        Size = MaxSize - newValue - FreeSpaceAfter;
+        _isUpdatingGeometry = false;
+        NotifyGeometryChanged();
     }
 
     partial void OnFreeSpaceAfterChanged(decimal oldValue, decimal newValue)
     {
-        if (_sizeLock)
+        if (_isUpdatingGeometry)
         {
-            _sizeLock = false;
             return;
         }
-        _fsaLock = true;
-        Size = MaxSize - FreeSpaceBefore - FreeSpaceAfter;
+
+        _isUpdatingGeometry = true;
+        Size = MaxSize - FreeSpaceBefore - newValue;
+        _isUpdatingGeometry = false;
+        NotifyGeometryChanged();
     }
 
     partial void OnSizeChanged(decimal oldValue, decimal newValue)
     {
-        if (_fsaLock)
+        if (_isUpdatingGeometry)
         {
-            _fsaLock = false;
             return;
         }
-        _sizeLock = true;
-        FreeSpaceAfter = MaxSize - FreeSpaceBefore - Size;
-    }
 
+        _isUpdatingGeometry = true;
+        FreeSpaceAfter = MaxSize - FreeSpaceBefore - newValue;
+        _isUpdatingGeometry = false;
+        NotifyGeometryChanged();
+    }
 
     private static decimal BytesToUnit(ulong bytes, string unit) => unit switch
     {
@@ -122,19 +138,116 @@ public partial class PartitionDialogViewModel : ObservableObject
         _ => throw new ArgumentOutOfRangeException(nameof(unit), $"Unknown unit: {unit}")
     };
 
-    private static ulong UnitToBytes(decimal value, string unit) => unit switch
+    private static decimal ConvertUnits(decimal value, string oldUnit, string newUnit)
     {
-        "MB" => (ulong)(value * 1024 * 1024),
-        "GB" => (ulong)(value * 1024 * 1024 * 1024),
+        var oldFactor = GetUnitFactor(oldUnit);
+        var newFactor = GetUnitFactor(newUnit);
+        return value * oldFactor / newFactor;
+    }
+
+    private static decimal GetUnitFactor(string unit) => unit switch
+    {
+        "MB" => 1024m * 1024m,
+        "GB" => 1024m * 1024m * 1024m,
         _ => throw new ArgumentOutOfRangeException(nameof(unit), $"Unknown unit: {unit}")
     };
 
-    [RelayCommand]
+    public static ulong ConvertToAlignedBytes(decimal value, string unit)
+    {
+        if (!TryConvertToAlignedBytes(value, unit, out var bytes))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(value),
+                "The size must be non-negative and fit in an unsigned 64-bit byte count.");
+        }
+
+        return bytes;
+    }
+
+    private static bool TryConvertToAlignedBytes(decimal value, string unit, out ulong bytes)
+    {
+        bytes = 0;
+        if (value < 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var rawBytes = value * GetUnitFactor(unit);
+            var alignedBytes = decimal.Floor(rawBytes / PartitionAlignmentBytes) *
+                PartitionAlignmentBytes;
+            if (alignedBytes > ulong.MaxValue)
+            {
+                return false;
+            }
+
+            bytes = (ulong)alignedBytes;
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
+
+    public bool CanSave => TryGetPartitionGeometry(out _, out _);
+
+    [RelayCommand(CanExecute = nameof(CanSave))]
     private void Ok()
     {
-        TargetPartition.StartOffset = TargetPartition.StartOffset + UnitToBytes(FreeSpaceBefore, SelectedSizeUnit);
-        TargetPartition.Size = UnitToBytes(Size, SelectedSizeUnit);
+        if (!TryGetPartitionGeometry(out var startOffset, out var size))
+        {
+            return;
+        }
+
+        TargetPartition.StartOffset = startOffset;
+        TargetPartition.Size = size;
         _dialogWindow.Close(TargetPartition);
+    }
+
+    private bool TryGetPartitionGeometry(out ulong startOffset, out ulong size)
+    {
+        startOffset = _spaceStart;
+        size = 0;
+        if (_spaceSize == 0 ||
+            _spaceStart % PartitionAlignmentBytes != 0 ||
+            _spaceSize % PartitionAlignmentBytes != 0 ||
+            Size <= 0 ||
+            FreeSpaceBefore < 0 ||
+            FreeSpaceAfter < 0 ||
+            !TryConvertToAlignedBytes(Size, SelectedSizeUnit, out size))
+        {
+            return false;
+        }
+
+        ulong freeSpaceBefore = 0;
+        if (IsNew &&
+            !TryConvertToAlignedBytes(
+                FreeSpaceBefore,
+                SelectedSizeUnit,
+                out freeSpaceBefore))
+        {
+            return false;
+        }
+
+        if (size == 0 ||
+            freeSpaceBefore > _spaceSize ||
+            size > _spaceSize - freeSpaceBefore ||
+            startOffset > ulong.MaxValue - freeSpaceBefore)
+        {
+            return false;
+        }
+
+        startOffset += freeSpaceBefore;
+        return startOffset % PartitionAlignmentBytes == 0 &&
+            size % PartitionAlignmentBytes == 0;
+    }
+
+    private void NotifyGeometryChanged()
+    {
+        OnPropertyChanged(nameof(CanSave));
+        OkCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
