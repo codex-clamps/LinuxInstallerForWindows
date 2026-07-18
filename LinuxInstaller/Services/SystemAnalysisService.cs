@@ -201,6 +201,10 @@ public sealed class SystemAnalysisService : ISystemAnalysisService
         {
             return BitLockerVolumeState.Unknown;
         }
+        catch (InvalidOperationException)
+        {
+            return BitLockerVolumeState.Unknown;
+        }
         catch (InvalidCastException)
         {
             return BitLockerVolumeState.Unknown;
