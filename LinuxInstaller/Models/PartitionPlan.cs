@@ -228,7 +228,7 @@ public partial class PartitionPlan : ObservableObject
     private static bool IsValidMountPoint(string mountPoint)
     {
         return mountPoint == "/" ||
-            (mountPoint.StartsWith('/', StringComparison.Ordinal) &&
+            (mountPoint.StartsWith("/", StringComparison.Ordinal) &&
              !mountPoint.Contains("//", StringComparison.Ordinal) &&
              !mountPoint.Split('/').Contains("..", StringComparer.Ordinal));
     }

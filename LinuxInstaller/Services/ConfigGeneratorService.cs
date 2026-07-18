@@ -1,6 +1,5 @@
 using LinuxInstaller.Models;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -19,21 +18,24 @@ public sealed class ConfigGeneratorService
     {
         ArgumentNullException.ThrowIfNull(distro);
         var title = EscapeGrubString($"Install {distro.DistroName} {distro.Version}".Trim());
-        return $"""
-            set default=0
-            set timeout=3
-
-            menuentry "{title}" {{
-                search --no-floppy --file --set=installer_root /.myinstaller/install.json
-                linux ($installer_root)/.myinstaller/installer.vmlinuz lifw.mode=install lifw.config=/.myinstaller/install.json lifw.installation={installationId:N}
-                initrd ($installer_root)/.myinstaller/installer.initrd
-            }}
-
-            menuentry "Windows Boot Manager" {{
-                search --no-floppy --file --set=windows_esp /EFI/Microsoft/Boot/bootmgfw.efi
-                chainloader ($windows_esp)/EFI/Microsoft/Boot/bootmgfw.efi
-            }}
-            """;
+        var lines = new[]
+        {
+            "set default=0",
+            "set timeout=3",
+            string.Empty,
+            $"menuentry \"{title}\" {{",
+            "    search --no-floppy --file --set=installer_root /.myinstaller/install.json",
+            "    linux ($installer_root)/.myinstaller/installer.vmlinuz lifw.mode=install lifw.config=/.myinstaller/install.json " +
+                $"lifw.installation={installationId:N}",
+            "    initrd ($installer_root)/.myinstaller/installer.initrd",
+            "}",
+            string.Empty,
+            "menuentry \"Windows Boot Manager\" {",
+            "    search --no-floppy --file --set=windows_esp /EFI/Microsoft/Boot/bootmgfw.efi",
+            "    chainloader ($windows_esp)/EFI/Microsoft/Boot/bootmgfw.efi",
+            "}"
+        };
+        return string.Join(Environment.NewLine, lines) + Environment.NewLine;
     }
 
     public string GenerateInstallConfiguration(

@@ -1,3 +1,5 @@
+using System;
+
 namespace LinuxInstaller.Models;
 
 public enum FileSystem

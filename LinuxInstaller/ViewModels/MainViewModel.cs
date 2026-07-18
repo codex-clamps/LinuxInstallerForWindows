@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using LinuxInstaller.Services;
 using LinuxInstaller.ViewModels.Interfaces;
+using System;
 using System.Collections.Generic;
 using System.Reactive.Linq;
 
