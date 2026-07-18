@@ -1,0 +1,111 @@
+name: Windows CI and release
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  SOLUTION: linux_installer.sln
+  PROJECT: LinuxInstaller/LinuxInstaller.csproj
+  APP_NAME: LinuxInstallerForWindows
+
+jobs:
+  ci:
+    name: Build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - name: Restore
+        run: dotnet restore ${{ env.SOLUTION }}
+      - name: Build
+        run: dotnet build ${{ env.SOLUTION }} --configuration Release --no-restore -p:ContinuousIntegrationBuild=true
+
+  release:
+    name: Publish Windows executable
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: ci
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - name: Validate release tag
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Release tag must use semantic versioning, for example v0.1.0."
+          }
+          "VERSION=$($env:RELEASE_TAG.Substring(1))" >> $env:GITHUB_ENV
+      - name: Restore Windows runtime
+        run: dotnet restore ${{ env.PROJECT }} --runtime win-x64
+      - name: Publish self-contained executable
+        shell: pwsh
+        run: dotnet publish $env:PROJECT --configuration Release --runtime win-x64 --self-contained true --no-restore --output artifacts/publish -p:Version=$env:VERSION -p:ContinuousIntegrationBuild=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false
+      - name: Prepare release assets
+        shell: pwsh
+        run: |
+          $sourcePath = Join-Path "artifacts/publish" "LinuxInstaller.exe"
+          if (-not (Test-Path -LiteralPath $sourcePath)) {
+            throw "Published executable was not found at $sourcePath."
+          }
+
+          $releaseDirectory = "artifacts/release"
+          New-Item -ItemType Directory -Path $releaseDirectory -Force | Out-Null
+          $assetName = "$env:APP_NAME-$env:RELEASE_TAG-win-x64.exe"
+          $assetPath = Join-Path $releaseDirectory $assetName
+          Copy-Item -LiteralPath $sourcePath -Destination $assetPath
+
+          $checksum = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$checksum  $assetName" | Set-Content -LiteralPath "$assetPath.sha256" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ env.RELEASE_TAG }}-win-x64
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = Get-ChildItem -LiteralPath "artifacts/release" | Select-Object -ExpandProperty FullName
+
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG @assets --repo $env:GITHUB_REPOSITORY --clobber
+          }
+          else {
+            gh release create $env:RELEASE_TAG @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "$env:APP_NAME $env:RELEASE_TAG" --generate-notes
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub release publication failed."
+          }
