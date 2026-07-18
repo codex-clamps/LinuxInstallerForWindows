@@ -1,10 +1,9 @@
+using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LinuxInstaller.Models;
-using Avalonia.Controls;
-using System.Collections.Generic;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 
 namespace LinuxInstaller.ViewModels;
 
@@ -26,47 +25,53 @@ public partial class PartitionDialogViewModel : ObservableObject
     private string _selectedSizeUnit = AvailableSizeUnits[0];
 
     [ObservableProperty]
-    private decimal _freeSpaceBefore = 0; // Decimal value for free space before
+    private decimal _freeSpaceBefore;
 
     [ObservableProperty]
-    private decimal _freeSpaceAfter = 0; // Decimal value for free space after
+    private decimal _freeSpaceAfter;
 
     [ObservableProperty]
     private decimal _maxSize;
 
     [ObservableProperty]
-    private bool _isNew = false;
+    private bool _isNew;
 
     [ObservableProperty]
     private string _title;
 
-    public static List<string> AvailableFileSystems { get; } = [.. Enum.GetValues<FileSystem>().Select(FS.ToString)];
+    public static List<string> AvailableFileSystems { get; } =
+        [FS.ToString(FileSystem.EXT4), FS.ToString(FileSystem.BTRFS)];
     public static List<string> AvailableSizeUnits { get; } = ["MB", "GB"];
 
-    public PartitionDialogViewModel(Window dialogWindow, ChartSpace space, int index = 0, bool hasRoot = false)
+    public PartitionDialogViewModel(
+        Window dialogWindow,
+        ChartSpace space,
+        int index = 0,
+        bool hasRoot = false)
     {
         _dialogWindow = dialogWindow;
         _spaceStart = space.Start;
         _spaceSize = space.Size;
         SelectedSizeUnit = "MB";
 
-        if (space is ChartPartition ps)
+        if (space is ChartPartition partitionSpace)
         {
-            TargetPartition = ps.Partition.Clone();
+            TargetPartition = partitionSpace.Partition.Clone();
             Title = "Edit Partition";
         }
         else
         {
             IsNew = true;
-            TargetPartition = new PlannedPartition()
+            TargetPartition = new PlannedPartition
             {
                 Id = PlannedPartition.CreateId(),
-                Name = "New Partition " + (index == 0 ? "" : $"{index}"),
+                Guid = Partition.CreatePartitionGuid(),
+                Name = "New Partition " + (index == 0 ? string.Empty : $"{index}"),
                 StartOffset = space.Start,
                 Size = space.Size,
-                FileSystem = FileSystem.LINUX,
+                FileSystem = FileSystem.EXT4,
                 IsSystem = false,
-                MountPoint = hasRoot ? "" : "/"
+                MountPoint = hasRoot ? string.Empty : "/"
             };
             Title = "Add New Partition";
         }
@@ -140,9 +145,7 @@ public partial class PartitionDialogViewModel : ObservableObject
 
     private static decimal ConvertUnits(decimal value, string oldUnit, string newUnit)
     {
-        var oldFactor = GetUnitFactor(oldUnit);
-        var newFactor = GetUnitFactor(newUnit);
-        return value * oldFactor / newFactor;
+        return value * GetUnitFactor(oldUnit) / GetUnitFactor(newUnit);
     }
 
     private static decimal GetUnitFactor(string unit) => unit switch
@@ -191,7 +194,10 @@ public partial class PartitionDialogViewModel : ObservableObject
         }
     }
 
-    public bool CanSave => TryGetPartitionGeometry(out _, out _);
+    public bool CanSave =>
+        FS.IsInstallable(TargetPartition.FileSystem) &&
+        !string.IsNullOrWhiteSpace(TargetPartition.MountPoint) &&
+        TryGetPartitionGeometry(out _, out _);
 
     [RelayCommand(CanExecute = nameof(CanSave))]
     private void Ok()

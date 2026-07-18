@@ -31,9 +31,15 @@ public class Partition
 
     public ulong EndOffset => StartOffset + Size;
     public bool IsProtected => IsExisting || IsSystem || IsBoot || IsReadOnly || IsHidden;
+    public bool IsEfiSystemPartition =>
+        string.Equals(Type, "EFI System Partition", StringComparison.OrdinalIgnoreCase) ||
+        (IsSystem && FileSystem == FileSystem.FAT32);
     public ulong? AvailableShrinkSpace => SupportedSizeMinimum is { } minimum && Size > minimum
         ? Size - minimum
         : null;
+
+    public static string CreatePartitionGuid() =>
+        System.Guid.NewGuid().ToString("D").ToUpperInvariant();
 
     public virtual Partition Clone()
     {

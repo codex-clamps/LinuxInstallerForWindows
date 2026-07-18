@@ -105,7 +105,6 @@ public partial class DistroPickerViewModel : NavigatableViewModelBase
         }
 
         var workflow = await dialog.ShowDialog<PartitionWorkflowType>(desktop.MainWindow);
-
         if (workflow == PartitionWorkflowType.Automatic)
         {
             await SelectAutomaticPartitioningAsync(desktop);
@@ -135,11 +134,20 @@ public partial class DistroPickerViewModel : NavigatableViewModelBase
             return;
         }
 
-        if (!result.IsSuccess || result.TargetDisk == null || result.RootPartition == null)
+        if (!result.IsSuccess ||
+            result.TargetDisk == null ||
+            result.EfiPartition == null ||
+            result.RootPartition == null)
         {
-            var message = result.Failure == AutomaticPartitionPlanFailure.NoEligibleDisk
-                ? "No online, writable internal GPT disk is eligible for installation."
-                : "No eligible disk has at least 16 GiB of contiguous unallocated space. Prepare free space in Windows Disk Management and try again.";
+            var message = result.Failure switch
+            {
+                AutomaticPartitionPlanFailure.NoEligibleDisk =>
+                    "No online, writable internal GPT disk is eligible for installation.",
+                AutomaticPartitionPlanFailure.NoEfiSystemPartition =>
+                    "No eligible disk contains a FAT32 EFI System Partition. Create or repair the ESP before continuing.",
+                _ =>
+                    "No eligible disk has at least 16 GiB of contiguous unallocated space. Prepare free space in Windows Disk Management and try again."
+            };
             await ShowMessageAsync(
                 desktop,
                 "Automatic Partitioning Unavailable",
@@ -147,21 +155,38 @@ public partial class DistroPickerViewModel : NavigatableViewModelBase
             return;
         }
 
-        TryApplyAutomaticPartitionPlan(result);
-        Navigation.Next();
+        if (TryApplyAutomaticPartitionPlan(result))
+        {
+            Navigation.Next();
+        }
     }
 
     internal bool TryApplyAutomaticPartitionPlan(AutomaticPartitionPlanResult result)
     {
         if (!result.IsSuccess ||
             result.TargetDisk is not { } targetDisk ||
+            result.EfiPartition is not { } efiPartition ||
             result.RootPartition is not { } rootPartition)
         {
             return false;
         }
 
         var plan = new PartitionPlan { TargetDisk = targetDisk };
+        var includedEfi = plan.PartitionHistory.LastOrDefault()?
+            .SingleOrDefault(partition =>
+                partition.MountPoint == "/boot/efi" &&
+                string.Equals(partition.Id, efiPartition.Id, StringComparison.OrdinalIgnoreCase));
+        if (includedEfi == null)
+        {
+            return false;
+        }
+
         plan.AddPartition(rootPartition);
+        if (!plan.IsValid)
+        {
+            return false;
+        }
+
         _installationConfigService.PartitionPlan = plan;
         _installationConfigService.SelectedPartitionWorkflow = PartitionWorkflowType.Automatic;
         return true;
@@ -192,7 +217,6 @@ public partial class DistroPickerViewModel : NavigatableViewModelBase
             message,
             options,
             dialog);
-
         await dialog.ShowDialog<bool>(desktop.MainWindow);
     }
 

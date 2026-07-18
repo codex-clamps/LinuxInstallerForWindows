@@ -1,75 +1,191 @@
 using LinuxInstaller.Models;
+using System;
 using System.Collections.Generic;
-using System.Text.Json; // Add for future use
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace LinuxInstaller.Services;
 
-// TODO: Replace all placeholder logic in this service with real config generation based on user input and system state.
-public class ConfigGeneratorService
+public sealed class ConfigGeneratorService
 {
-    public string GenerateGrubStage1Config(string stage2MarkerPath)
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        // TODO: This config is mostly static, but ensure the search path is correct.
-        // The placeholder is likely sufficient for most cases.
-        return @"
-set timeout=5
-echo ""Searching for My Linux Installer (Stage 2)...""
+        WriteIndented = true
+    };
 
-# Search all partitions for the Stage 2 marker file
-if search --file --no-floppy --set=root /.myinstaller/stage2.cfg ; then
-    echo ""Installer found on $root.""
-    configfile /.myinstaller/stage2.cfg
-else
-    echo ""Error: Could not find /.myinstaller/stage2.cfg on any drive.""
-    sleep 10
-fi
-";
+    public string GenerateGrubStage2Config(Distro distro, System.Guid installationId)
+    {
+        ArgumentNullException.ThrowIfNull(distro);
+        var title = EscapeGrubString($"Install {distro.DistroName} {distro.Version}".Trim());
+        return $"""
+            set default=0
+            set timeout=3
+
+            menuentry "{title}" {{
+                search --no-floppy --file --set=installer_root /.myinstaller/install.json
+                linux ($installer_root)/.myinstaller/installer.vmlinuz lifw.mode=install lifw.config=/.myinstaller/install.json lifw.installation={installationId:N}
+                initrd ($installer_root)/.myinstaller/installer.initrd
+            }}
+
+            menuentry "Windows Boot Manager" {{
+                search --no-floppy --file --set=windows_esp /EFI/Microsoft/Boot/bootmgfw.efi
+                chainloader ($windows_esp)/EFI/Microsoft/Boot/bootmgfw.efi
+            }}
+            """;
     }
 
-    public string GenerateGrubStage2Config(string isoPath)
+    public string GenerateInstallConfiguration(
+        System.Guid installationId,
+        Distro distro,
+        PartitionPlan plan,
+        UserInfo userInfo)
     {
-        // TODO: Dynamically generate this config based on the selected workflow (ISO vs. Automated)
-        // and the actual paths/names of kernel/initrd files or ISOs.
-        return @"
-set timeout=10
+        ArgumentNullException.ThrowIfNull(distro);
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(userInfo);
 
-menuentry ""Start Automated Install"" {
-    # Root is already set to D:
-    linux /.myinstaller/installer.vmlinuz
-    initrd /.myinstaller/installer.initrd
-}
+        if (!plan.IsValid ||
+            plan.TargetDisk is not { } targetDisk ||
+            plan.PartitionHistory.Count == 0)
+        {
+            throw new InvalidOperationException("The partition plan is not valid.");
+        }
 
-menuentry ""Start Ubuntu 24.04 ISO"" {
-    set isofile=""/.myinstaller/ubuntu-24.04.iso""
-    loopback loop $isofile
-    linux (loop)/casper/vmlinuz boot=casper iso-scan/filename=$isofile ---
-    initrd (loop)/casper/initrd
-}
-";
+        if (!TryNormalizeGuid(targetDisk.UniqueId, out var targetDiskGuid) &&
+            !TryNormalizeGuid(targetDisk.Id, out targetDiskGuid))
+        {
+            throw new InvalidOperationException(
+                "The selected disk does not expose a valid GPT disk identifier.");
+        }
+
+        ValidateUserInfo(userInfo);
+        var usedNumbers = targetDisk.Partitions
+            .Select(partition => partition.Number)
+            .Where(number => number > 0)
+            .ToHashSet();
+        var nextNumber = 1u;
+
+        uint GetNextNumber()
+        {
+            while (usedNumbers.Contains(nextNumber))
+            {
+                nextNumber++;
+            }
+
+            usedNumbers.Add(nextNumber);
+            return nextNumber++;
+        }
+
+        var partitions = plan.PartitionHistory.Last()
+            .Where(partition =>
+                !partition.IsExisting ||
+                !string.IsNullOrWhiteSpace(partition.MountPoint))
+            .OrderBy(partition => partition.StartOffset)
+            .Select(partition =>
+            {
+                if (!TryNormalizeGuid(partition.Guid, out var partitionGuid))
+                {
+                    partition.Guid = Partition.CreatePartitionGuid();
+                    partitionGuid = partition.Guid;
+                }
+
+                var number = partition.IsExisting
+                    ? partition.Number
+                    : partition.Number > 0 && usedNumbers.Add(partition.Number)
+                        ? partition.Number
+                        : GetNextNumber();
+
+                return new
+                {
+                    number,
+                    guid = partitionGuid,
+                    name = string.IsNullOrWhiteSpace(partition.Name)
+                        ? $"Linux partition {number}"
+                        : partition.Name,
+                    startOffsetBytes = partition.StartOffset,
+                    sizeBytes = partition.Size,
+                    fileSystem = FS.ToLinuxName(partition.FileSystem),
+                    mountPoint = partition.MountPoint,
+                    isExisting = partition.IsExisting
+                };
+            })
+            .ToArray();
+
+        var hostname = CreateHostname(distro.RootfsId, userInfo.Username);
+        var configuration = new
+        {
+            schemaVersion = 1,
+            installationId = installationId.ToString("N"),
+            distroId = distro.RootfsId,
+            distroName = $"{distro.DistroName} {distro.Version}".Trim(),
+            hostname,
+            targetDiskGuid,
+            rootfsFileName = "rootfs.tar.zst",
+            filesystemToolchainFileName = "filesystem-tools.tar.zst",
+            partitions,
+            user = new
+            {
+                username = userInfo.Username,
+                fullName = string.IsNullOrWhiteSpace(userInfo.FullName)
+                    ? userInfo.Username
+                    : userInfo.FullName,
+                passwordBase64 = Convert.ToBase64String(
+                    Encoding.UTF8.GetBytes(userInfo.Password)),
+                autoLogin = userInfo.AutoLogin
+            }
+        };
+
+        return JsonSerializer.Serialize(configuration, JsonOptions);
     }
 
-    public string GenerateInstallConf(string diskGuid, List<PartitionPlan> plan)
+    private static void ValidateUserInfo(UserInfo userInfo)
     {
-        // TODO: Serialize the actual user-defined partition plan and other settings into a JSON string.
-        // Example of a real implementation:
-        // var config = new {
-        //   install_mode = "manual",
-        //   target_disk_guid = diskGuid,
-        //   rootfs_file = "ubuntu.rootfs",
-        //   partition_plan = plan
-        // };
-        // return JsonSerializer.Serialize(config);
+        if (!Regex.IsMatch(userInfo.Username, "^[a-z_][a-z0-9_-]{0,31}$"))
+        {
+            throw new InvalidOperationException(
+                "The Linux username must use lowercase letters, digits, underscore, or hyphen.");
+        }
 
-        return @"
-{
-  ""install_mode"": ""manual"",
-  ""target_disk_guid"": ""YOUR-DISK-GUID-HERE"",
-  ""rootfs_file"": ""ubuntu.rootfs"",
-  ""partition_plan"": [
-    { ""mount_point"": ""/"", ""fs_type"": ""ext4"", ""size_mb"": 80000 },
-    { ""mount_point"": ""swap"", ""fs_type"": ""linux-swap"", ""size_mb"": 16000 }
-  ]
-}
-";
+        if (string.IsNullOrEmpty(userInfo.Password) ||
+            userInfo.Password.Contains('\r') ||
+            userInfo.Password.Contains('\n'))
+        {
+            throw new InvalidOperationException(
+                "The Linux password cannot be empty or contain line breaks.");
+        }
+    }
+
+    private static string CreateHostname(string distroId, string username)
+    {
+        var hostname = Regex.Replace(
+            $"{distroId}-{username}".ToLowerInvariant(),
+            "[^a-z0-9-]",
+            "-").Trim('-');
+        if (hostname.Length == 0)
+        {
+            hostname = "linux";
+        }
+
+        return hostname.Length <= 63 ? hostname : hostname[..63].TrimEnd('-');
+    }
+
+    private static bool TryNormalizeGuid(string value, out string normalized)
+    {
+        if (System.Guid.TryParse(value, out var guid))
+        {
+            normalized = guid.ToString("D").ToUpperInvariant();
+            return true;
+        }
+
+        normalized = string.Empty;
+        return false;
+    }
+
+    private static string EscapeGrubString(string value)
+    {
+        return value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
     }
 }

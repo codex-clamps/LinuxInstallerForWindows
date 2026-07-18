@@ -21,8 +21,23 @@ public static class AutomaticPartitionPlanner
                 AutomaticPartitionPlanFailure.NoEligibleDisk);
         }
 
+        var foundEfiPartition = false;
         foreach (var disk in eligibleDisks)
         {
+            var efiPartition = disk.Partitions
+                .Where(partition =>
+                    partition.IsEfiSystemPartition &&
+                    partition.FileSystem == FileSystem.FAT32 &&
+                    System.Guid.TryParse(partition.Guid, out _))
+                .OrderByDescending(partition => partition.IsSystem)
+                .ThenBy(partition => partition.Number)
+                .FirstOrDefault();
+            if (efiPartition == null)
+            {
+                continue;
+            }
+
+            foundEfiPartition = true;
             if (disk.Size <= PartitionAlignmentBytes * 2)
             {
                 continue;
@@ -44,7 +59,10 @@ public static class AutomaticPartitionPlanner
                     var rootPartition = CreateRootPartition(disk, lastOffset, range.Start);
                     if (rootPartition != null)
                     {
-                        return AutomaticPartitionPlanResult.Success(disk, rootPartition);
+                        return AutomaticPartitionPlanResult.Success(
+                            disk,
+                            efiPartition,
+                            rootPartition);
                     }
                 }
 
@@ -59,13 +77,18 @@ public static class AutomaticPartitionPlanner
                 var rootPartition = CreateRootPartition(disk, lastOffset, usableDiskEnd);
                 if (rootPartition != null)
                 {
-                    return AutomaticPartitionPlanResult.Success(disk, rootPartition);
+                    return AutomaticPartitionPlanResult.Success(
+                        disk,
+                        efiPartition,
+                        rootPartition);
                 }
             }
         }
 
         return AutomaticPartitionPlanResult.Failed(
-            AutomaticPartitionPlanFailure.NoSuitableFreeSpace);
+            foundEfiPartition
+                ? AutomaticPartitionPlanFailure.NoSuitableFreeSpace
+                : AutomaticPartitionPlanFailure.NoEfiSystemPartition);
     }
 
     private static PartitionRange BoundToUsableDisk(Partition partition, ulong usableDiskEnd)
@@ -93,10 +116,11 @@ public static class AutomaticPartitionPlanner
         {
             Id = PlannedPartition.CreateId(),
             DiskId = disk.Id,
+            Guid = Partition.CreatePartitionGuid(),
             Name = "Linux root partition",
             Size = alignedEndOffset - alignedStartOffset,
             StartOffset = alignedStartOffset,
-            FileSystem = FileSystem.LINUX,
+            FileSystem = FileSystem.EXT4,
             MountPoint = "/",
             IsSystem = false,
             IsExisting = false

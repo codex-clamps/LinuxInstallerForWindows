@@ -1,5 +1,4 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using LinuxInstaller.Models;
 using LinuxInstaller.Services;
 using LinuxInstaller.ViewModels.Interfaces;
 using System;
@@ -9,12 +8,11 @@ namespace LinuxInstaller.ViewModels;
 
 public partial class InstallationProgressViewModel : NavigatableViewModelBase
 {
-    private readonly DistroService _distroService;
-    private readonly InstallationConfigService _installationConfigService;
+    private readonly InstallerOrchestratorService _installerOrchestrator;
     private bool _isRunning;
 
     [ObservableProperty]
-    private string _statusText = "Starting installation...";
+    private string _statusText = "Starting installation preparation...";
 
     [ObservableProperty]
     private double _progressValue;
@@ -28,12 +26,10 @@ public partial class InstallationProgressViewModel : NavigatableViewModelBase
 
     public InstallationProgressViewModel(
         NavigationService navigationService,
-        DistroService distroService,
-        InstallationConfigService installationConfigService)
+        InstallerOrchestratorService installerOrchestrator)
         : base(navigationService)
     {
-        _distroService = distroService;
-        _installationConfigService = installationConfigService;
+        _installerOrchestrator = installerOrchestrator;
     }
 
     public async Task StartInstallationAsync()
@@ -45,56 +41,31 @@ public partial class InstallationProgressViewModel : NavigatableViewModelBase
 
         _isRunning = true;
         HasError = false;
+        IsIndeterminate = false;
+        ProgressValue = 0;
 
         try
         {
-            if (_installationConfigService.SelectedInstallWorkflow != InstallWorkflowType.Distro)
+            var progress = new Progress<InstallationPreparationProgress>(value =>
             {
-                await RunIsoPreparationAsync();
-                return;
-            }
-
-            var distro = _installationConfigService.SelectedDistro
-                ?? throw new InvalidOperationException("No Linux distribution was selected.");
-
-            IsIndeterminate = false;
-            ProgressValue = 0;
-            StatusText = $"Downloading {distro.DistroName} root filesystem...";
-
-            var progress = new Progress<double>(value =>
-            {
-                ProgressValue = Math.Clamp(value, 0, 100);
-                StatusText = $"Downloading {distro.DistroName} root filesystem... {ProgressValue:0}%";
+                ProgressValue = Math.Clamp(value.Percentage, 0, 100);
+                StatusText = value.Status;
             });
-
-            _installationConfigService.SelectedRootfsPath = await _distroService.DownloadRootfsAsync(
-                distro,
-                progress);
-
+            await _installerOrchestrator.PrepareInstallationAsync(progress);
             ProgressValue = 100;
-            StatusText = $"{distro.DistroName} root filesystem downloaded and verified.";
-            await Task.Delay(500);
+            await Task.Delay(400);
             Navigation.Next();
         }
         catch (Exception exception)
         {
             HasError = true;
             IsIndeterminate = false;
-            StatusText = $"Download failed: {exception.Message}";
+            StatusText = $"Installation preparation failed: {exception.Message}";
         }
         finally
         {
             _isRunning = false;
         }
-    }
-
-    private async Task RunIsoPreparationAsync()
-    {
-        IsIndeterminate = true;
-        StatusText = "Preparing the selected ISO...";
-        await Task.Delay(1000);
-        StatusText = "ISO is ready for installation.";
-        Navigation.Next();
     }
 
     public override bool CanProceed => false;

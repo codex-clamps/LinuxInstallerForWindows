@@ -9,7 +9,6 @@ public partial class PartitionPlan : ObservableObject
 {
     private const ulong PartitionAlignmentBytes = 1024UL * 1024UL;
 
-    // Represents the disk chosen for installation
     private Disk? _targetDisk;
     public Disk? TargetDisk
     {
@@ -23,7 +22,6 @@ public partial class PartitionPlan : ObservableObject
         }
     }
 
-    // History of partition states
     private List<List<PlannedPartition>> _partitionHistory = [];
     public List<List<PlannedPartition>> PartitionHistory
     {
@@ -31,20 +29,28 @@ public partial class PartitionPlan : ObservableObject
         set => SetProperty(ref _partitionHistory, value);
     }
 
-    // Constructor
-    public PartitionPlan()
-    {
-        // Partitions and PartitionHistory will be initialized/reset when TargetDisk is set.
-    }
-
     public void Reset()
     {
         PartitionHistory.Clear();
-        if (TargetDisk != null)
+        if (TargetDisk == null)
         {
-            // Clone partitions from TargetDisk to ensure independent copies
-            PartitionHistory.Add([.. TargetDisk.Partitions.Select(p => PlannedPartition.FromPartition(p))]);
+            return;
         }
+
+        var partitions = TargetDisk.Partitions
+            .Select(partition => PlannedPartition.FromPartition(partition))
+            .ToList();
+        var efiPartition = partitions
+            .Where(partition => partition.IsEfiSystemPartition)
+            .OrderByDescending(partition => partition.IsSystem)
+            .ThenBy(partition => partition.Number)
+            .FirstOrDefault();
+        if (efiPartition != null)
+        {
+            efiPartition.MountPoint = "/boot/efi";
+        }
+
+        PartitionHistory.Add(partitions);
     }
 
     public void AddPartition(PlannedPartition newPartition)
@@ -58,24 +64,23 @@ public partial class PartitionPlan : ObservableObject
         var currentPartitions = PartitionHistory.Last();
         if (string.IsNullOrWhiteSpace(newPartition.Id) ||
             currentPartitions.Any(partition =>
-                string.Equals(
-                    partition.Id,
-                    newPartition.Id,
-                    StringComparison.OrdinalIgnoreCase)))
+                string.Equals(partition.Id, newPartition.Id, StringComparison.OrdinalIgnoreCase)))
         {
             do
             {
                 newPartition.Id = PlannedPartition.CreateId();
             }
             while (currentPartitions.Any(partition =>
-                string.Equals(
-                    partition.Id,
-                    newPartition.Id,
-                    StringComparison.OrdinalIgnoreCase)));
+                string.Equals(partition.Id, newPartition.Id, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (!System.Guid.TryParse(newPartition.Guid, out _))
+        {
+            newPartition.Guid = Partition.CreatePartitionGuid();
         }
 
         newPartition.IsExisting = false;
-        PartitionHistory.Add([.. PartitionHistory.Last(), newPartition]);
+        PartitionHistory.Add([.. currentPartitions, newPartition]);
     }
 
     public void EditPartition(PlannedPartition oldPartition, PlannedPartition updatedPartition)
@@ -90,15 +95,18 @@ public partial class PartitionPlan : ObservableObject
         }
 
         var index = PartitionHistory.Last().IndexOf(oldPartition);
-        if (index != -1)
+        if (index == -1)
         {
-            updatedPartition.Id = oldPartition.Id;
-            updatedPartition.DiskId = oldPartition.DiskId;
-            updatedPartition.IsExisting = false;
-            List<PlannedPartition> partitions = [.. PartitionHistory.Last()];
-            partitions[index] = updatedPartition;
-            PartitionHistory.Add(partitions);
+            return;
         }
+
+        updatedPartition.Id = oldPartition.Id;
+        updatedPartition.DiskId = oldPartition.DiskId;
+        updatedPartition.Guid = oldPartition.Guid;
+        updatedPartition.IsExisting = false;
+        List<PlannedPartition> partitions = [.. PartitionHistory.Last()];
+        partitions[index] = updatedPartition;
+        PartitionHistory.Add(partitions);
     }
 
     public void DeletePartition(PlannedPartition partitionToDelete)
@@ -110,10 +118,8 @@ public partial class PartitionPlan : ObservableObject
         }
 
         var partitions = new List<PlannedPartition>(PartitionHistory.Last());
-        var index = partitions.IndexOf(partitionToDelete);
-        if (index != -1)
+        if (partitions.Remove(partitionToDelete))
         {
-            partitions.RemoveAt(index);
             PartitionHistory.Add(partitions);
         }
     }
@@ -134,18 +140,46 @@ public partial class PartitionPlan : ObservableObject
                 partitions.Any(partition => string.IsNullOrWhiteSpace(partition.Id)) ||
                 partitions.Select(partition => partition.Id)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count() != partitions.Count ||
+                partitions.Any(partition => !System.Guid.TryParse(partition.Guid, out _)) ||
+                partitions.Select(partition => partition.Guid)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count() != partitions.Count)
             {
                 return false;
             }
 
-            var roots = partitions
-                .Where(partition => partition.MountPoint == "/")
-                .ToList();
+            var roots = partitions.Where(partition => partition.MountPoint == "/").ToList();
             if (roots.Count != 1 ||
                 roots[0].IsProtected ||
                 roots[0].IsExisting ||
-                roots[0].FileSystem != FileSystem.LINUX)
+                !FS.IsInstallable(roots[0].FileSystem))
+            {
+                return false;
+            }
+
+            var efiPartitions = partitions
+                .Where(partition => partition.MountPoint == "/boot/efi")
+                .ToList();
+            if (efiPartitions.Count != 1 ||
+                !efiPartitions[0].IsExisting ||
+                !efiPartitions[0].IsEfiSystemPartition ||
+                efiPartitions[0].FileSystem != FileSystem.FAT32)
+            {
+                return false;
+            }
+
+            var mountedPartitions = partitions
+                .Where(partition => !string.IsNullOrWhiteSpace(partition.MountPoint))
+                .ToList();
+            if (mountedPartitions.Any(partition => !IsValidMountPoint(partition.MountPoint)) ||
+                mountedPartitions.Select(partition => partition.MountPoint)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() != mountedPartitions.Count ||
+                partitions.Any(partition =>
+                    !partition.IsExisting &&
+                    (!FS.IsInstallable(partition.FileSystem) ||
+                     string.IsNullOrWhiteSpace(partition.MountPoint))))
             {
                 return false;
             }
@@ -174,10 +208,7 @@ public partial class PartitionPlan : ObservableObject
 
                 if (!partition.IsExisting &&
                     (partition.IsProtected ||
-                     !string.Equals(
-                         partition.DiskId,
-                         targetDisk.Id,
-                         StringComparison.OrdinalIgnoreCase) ||
+                     !string.Equals(partition.DiskId, targetDisk.Id, StringComparison.OrdinalIgnoreCase) ||
                      partition.StartOffset < PartitionAlignmentBytes ||
                      partition.StartOffset >= usableDiskEnd ||
                      endOffset > usableDiskEnd ||
@@ -194,13 +225,19 @@ public partial class PartitionPlan : ObservableObject
         }
     }
 
+    private static bool IsValidMountPoint(string mountPoint)
+    {
+        return mountPoint == "/" ||
+            (mountPoint.StartsWith('/', StringComparison.Ordinal) &&
+             !mountPoint.Contains("//", StringComparison.Ordinal) &&
+             !mountPoint.Split('/').Contains("..", StringComparer.Ordinal));
+    }
+
     private static bool ProtectedPartitionsAreUnchanged(
         Disk targetDisk,
         IReadOnlyList<PlannedPartition> partitions)
     {
-        var existingPartitions = partitions
-            .Where(partition => partition.IsExisting)
-            .ToList();
+        var existingPartitions = partitions.Where(partition => partition.IsExisting).ToList();
         if (existingPartitions.Count != targetDisk.Partitions.Count)
         {
             return false;
@@ -214,9 +251,10 @@ public partial class PartitionPlan : ObservableObject
         Partition original,
         PlannedPartition current)
     {
+        var expectedMountPoint = original.IsEfiSystemPartition ? "/boot/efi" : string.Empty;
         return current.IsExisting &&
             current.IsProtected &&
-            string.IsNullOrWhiteSpace(current.MountPoint) &&
+            string.Equals(current.MountPoint, expectedMountPoint, StringComparison.Ordinal) &&
             string.Equals(current.Id, original.Id, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(current.DiskId, original.DiskId, StringComparison.OrdinalIgnoreCase) &&
             current.Number == original.Number &&

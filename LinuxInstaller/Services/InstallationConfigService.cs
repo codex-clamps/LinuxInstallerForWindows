@@ -1,9 +1,8 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using LinuxInstaller.Models;
-using CommunityToolkit.Mvvm.ComponentModel; // For ObservableObject if needed, or just INotifyPropertyChanged
 
 namespace LinuxInstaller.Services;
 
-// This service will hold shared state/configuration for the installation process.
 public partial class InstallationConfigService : ObservableObject
 {
     private InstallWorkflowType _selectedInstallWorkflow = InstallWorkflowType.None;
@@ -32,6 +31,27 @@ public partial class InstallationConfigService : ObservableObject
     {
         get => _selectedRootfsPath;
         set => SetProperty(ref _selectedRootfsPath, value);
+    }
+
+    private string? _toolchainSessionDirectory;
+    public string? ToolchainSessionDirectory
+    {
+        get => _toolchainSessionDirectory;
+        set => SetProperty(ref _toolchainSessionDirectory, value);
+    }
+
+    private string? _stagingDirectory;
+    public string? StagingDirectory
+    {
+        get => _stagingDirectory;
+        set => SetProperty(ref _stagingDirectory, value);
+    }
+
+    private string? _bootEntryId;
+    public string? BootEntryId
+    {
+        get => _bootEntryId;
+        set => SetProperty(ref _bootEntryId, value);
     }
 
     private PartitionWorkflowType _selectedPartitionWorkflow = PartitionWorkflowType.None;
