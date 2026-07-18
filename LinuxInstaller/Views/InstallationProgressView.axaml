@@ -5,7 +5,7 @@
              xmlns:vm="using:LinuxInstaller.ViewModels"
              mc:Ignorable="d"
              x:Class="LinuxInstaller.Views.InstallationProgressView"
-			 x:DataType="vm:InstallationProgressViewModel"
+             x:DataType="vm:InstallationProgressViewModel"
              d:DesignWidth="400" d:DesignHeight="300">
     <Design.DataContext>
         <vm:InstallationProgressViewModel/>
@@ -16,15 +16,26 @@
                 <Image Source="avares://LinuxInstaller/Assets/Icons/Logo.png" Width="48" Height="48"/>
             </Border>
             <TextBlock Text="Installation in progress" Classes="HeadlineLarge" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{StaticResource OnSurfaceBrush}" />
-			<ProgressBar
-				Height="4"
-				CornerRadius="2"
-				IsIndeterminate="True"
-				HorizontalAlignment="Stretch"
-				VerticalAlignment="Center"
-				IsVisible="True"
-				Foreground="{StaticResource PrimaryBrush}"/>
-            <TextBlock Text="{Binding StatusText}" Classes="HeadlineMedium" HorizontalAlignment="Center" Foreground="{StaticResource OnSurfaceVariantBrush}" />
-        </StackPanel> 
+            <ProgressBar
+                Height="4"
+                Width="320"
+                CornerRadius="2"
+                Minimum="0"
+                Maximum="100"
+                Value="{Binding ProgressValue}"
+                IsIndeterminate="{Binding IsIndeterminate}"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center"
+                IsVisible="True"
+                Foreground="{StaticResource PrimaryBrush}"/>
+            <TextBlock
+                Text="{Binding StatusText}"
+                MaxWidth="320"
+                TextWrapping="Wrap"
+                TextAlignment="Center"
+                Classes="HeadlineMedium"
+                HorizontalAlignment="Center"
+                Foreground="{StaticResource OnSurfaceVariantBrush}" />
+        </StackPanel>
     </Grid>
 </UserControl>

@@ -27,6 +27,13 @@ public partial class InstallationConfigService : ObservableObject
         set => SetProperty(ref _selectedDistro, value);
     }
 
+    private string? _selectedRootfsPath;
+    public string? SelectedRootfsPath
+    {
+        get => _selectedRootfsPath;
+        set => SetProperty(ref _selectedRootfsPath, value);
+    }
+
     private PartitionWorkflowType _selectedPartitionWorkflow = PartitionWorkflowType.None;
     public PartitionWorkflowType SelectedPartitionWorkflow
     {
