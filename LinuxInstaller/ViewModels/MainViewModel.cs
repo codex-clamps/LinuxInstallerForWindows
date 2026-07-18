@@ -111,7 +111,7 @@ public partial class MainViewModel : ObservableObject
                 // 3. Create the BCD entry using BootManagerService.
                 await _bootManagerService.CreateBcdEntryAsync(
                     espPath,
-                    "EFI\MyCustomInstaller\shimx64.efi");
+                    "EFI\\MyCustomInstaller\\shimx64.efi");
             }
             finally
             {
